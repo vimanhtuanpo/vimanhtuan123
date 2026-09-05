@@ -1,0 +1,13 @@
+{
+  "name": "construction-simulator-browser",
+  "version": "1.1.0",
+  "description": "Construction Simulator (Browser) - improved with pathfinding, sprites and modular code.",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server -c-1 -p 8000",
+    "serve": "npx http-server -c-1 -p 8000"
+  },
+  "author": "vimanhtuanpo",
+  "license": "MIT",
+  "dependencies": {}
+}
