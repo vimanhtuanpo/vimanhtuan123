@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Construction Simulator (Browser)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    *{box-sizing:border-box;font-family:Arial, Helvetica, sans-serif}
+    body{margin:0;display:flex;flex-direction:column;height:100vh}
+    header{padding:8px;background:#222;color:#fff;display:flex;align-items:center;justify-content:space-between}
+    header h1{margin:0;font-size:18px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .controls button,input{padding:6px 8px;border-radius:4px;border:1px solid #999;background:#fff}
+    main{flex:1;display:flex;gap:10px;padding:10px;background:#f0f3f5}
+    canvas#world{background:#cfe7ff;border:1px solid #888;flex:0 0 auto}
+    aside{flex:1;overflow:auto;padding:6px;background:#fff;border:1px solid #ddd}
+    aside section{margin-bottom:12px}
+    #companies,#sites,#citizens{max-height:180px;overflow:auto;border:1px solid #eee;padding:6px;background:#fafafa}
+    .log{height:120px;overflow:auto;border:1px solid #eee;padding:6px;background:#111;color:#0f0;font-family:monospace;font-size:12px}
+    .item{padding:6px;border-bottom:1px solid #eee}
+    .small{font-size:12px;color:#555}
+    footer{padding:6px;text-align:center;background:#fafafa;border-top:1px solid #ddd}
+    button.small{padding:4px 6px}
+    .progressBar{height:10px;background:#eee;border-radius:6px;overflow:hidden;margin-top:6px}
+    .progressFill{height:100%;background:linear-gradient(90deg,#4caf50,#8bc34a)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Construction Simulator (Browser)</h1>
+    <div class="controls">
+      <button id="addCitizen">Thêm dân</button>
+      <button id="addCompany">Thêm công ty</button>
+      <button id="addSite">Tạo công trường</button>
+      <button id="postJob">Đăng tuyển ngẫu nhiên</button>
+      <button id="tickOnce">Tick 1</button>
+      <button id="start">Start</button>
+      <button id="pause">Pause</button>
+      <label>Speed: <input id="speed" type="range" min="1" max="10" value="3"></label>
+      <button id="save">Save</button>
+      <button id="load">Load</button>
+      <button id="reset">Reset</button>
+    </div>
+  </header>
+
+  <main>
+    <canvas id="world" width="900" height="600"></canvas>
+    <aside>
+      <section>
+        <h2>Companies</h2>
+        <div id="companies"></div>
+      </section>
+      <section>
+        <h2>Construction Sites</h2>
+        <div id="sites"></div>
+      </section>
+      <section>
+        <h2>Citizens</h2>
+        <div id="citizens"></div>
+      </section>
+      <section>
+        <h2>Log</h2>
+        <div id="log" class="log"></div>
+      </section>
+    </aside>
+  </main>
+
+  <footer>
+    <small>Open the file in your browser. Save/load uses localStorage.</small>
+  </footer>
+
+  <script>
+  // Single-file Construction Simulator (embedded)
+  class Citizen {
+    constructor(id, x, y, skill=1) {
+      this.id = id;
+      this.x = x; this.y = y;
+      this.skill = skill;
+      this.money = 100 + Math.floor(Math.random()*200);
+      this.happiness = 1.0;
+      this.employed = null;
+    }
+    toJSON(){ return {id:this.id,x:this.x,y:this.y,skill:this.skill,money:this.money,happiness:this.happiness,employedJobId:this.employed||null} }
+    static from(obj){ const c=new Citizen(obj.id,obj.x,obj.y,obj.skill); c.money=obj.money;c.happiness=obj.happiness; return c; }
+    tick() {
+      this.money -= 0.5;
+      if (this.money < 0) this.happiness -= 0.02;
+      this.happiness = Math.max(0,Math.min(2,this.happiness));
+    }
+  }
+
+  class Job {
+    constructor(id, companyId, skillReq=1, wage=5) {
+      this.id = id;
+      this.companyId = companyId;
+      this.skillReq = skillReq;
+      this.wage = wage;
+      this.filledBy = null;
+    }
+    toJSON(){ return {id:this.id,companyId:this.companyId,skillReq:this.skillReq,wage:this.wage,filledBy:this.filledBy} }
+    static from(o){ const j=new Job(o.id,o.companyId,o.skillReq,o.wage); j.filledBy=o.filledBy; return j;}
+  }
+
+  class Company {
+    constructor(id, name, x, y) {
+      this.id = id; this.name = name;
+      this.x=x; this.y=y;
+      this.funds = 1000 + Math.floor(Math.random()*1000);
+      this.openings = [];
+    }
+    toJSON(){ return {id:this.id,name:this.name,x:this.x,y:this.y,funds:this.funds,openings:this.openings} }
+    static from(o){ const c=new Company(o.id,o.name,o.x,o.y); c.funds=o.funds; c.openings=o.openings; return c; }
+  }
+
+  class Site {
+    constructor(id, companyId, x, y, required=200, materialCost=200) {
+      this.id=id; this.companyId=companyId; this.x=x; this.y=y;
+      this.requiredManHours=required;
+      this.progress=0;
+      this.materialCost=materialCost;
+      this.status='planned';
+    }
+    toJSON(){ return {id:this.id,companyId:this.companyId,x:this.x,y:this.y,required:this.requiredManHours,progress:this.progress,material:this.materialCost,status:this.status} }
+    static from(o){ const s=new Site(o.id,o.companyId,o.x,o.y,o.required,o.material); s.progress=o.progress; s.status=o.status; return s; }
+    startIfPossible(company){
+      if (this.status!=='planned' && this.status!=='waiting_materials') return;
+      if (company.funds >= this.materialCost) {
+        company.funds -= this.materialCost;
+        this.status = 'ongoing';
+        return true;
+      } else {
+        this.status = 'waiting_materials';
+        return false;
+      }
+    }
+    applyWork(amount){
+      if (this.status !== 'ongoing') return;
+      this.progress += amount;
+      if (this.progress >= this.requiredManHours) this.status='done';
+    }
+  }
+
+  class Simulator {
+    constructor(width, height) {
+      this.width = width; this.height = height;
+      this.ticks = 0;
+      this.citizens = [];
+      this.companies = [];
+      this.jobs = {};
+      this.sites = [];
+      this.jobCounter = 0;
+      this.logLines = [];
+    }
+
+    log(s){
+      const t = `[${this.ticks}] ${s}`;
+      this.logLines.unshift(t);
+      if (this.logLines.length>200) this.logLines.pop();
+    }
+
+    addCitizen(skill){
+      const id = `C${this.citizens.length}`;
+      const x = Math.random()* (this.width-40)+20, y = Math.random()*(this.height-40)+20;
+      const c = new Citizen(id,x,y,skill || (1+Math.floor(Math.random()*6)));
+      this.citizens.push(c);
+      this.log(`Thêm dân ${id} skill=${c.skill}`);
+      return c;
+    }
+    addCompany(name){
+      const id = `CO${this.companies.length}`;
+      const x = Math.random()* (this.width-160)+80, y = Math.random()* (this.height-160)+80;
+      const c = new Company(id, name || `Company ${this.companies.length}`, x, y);
+      this.companies.push(c);
+      this.log(`Tạo công ty ${c.name} (${id}) funds=${c.funds}`);
+      return c;
+    }
+    addSite(companyId, required, materialCost){
+      const id = `S${this.sites.length}`;
+      const company = this.companies.find(c=>c.id===companyId);
+      if (!company) return null;
+      const x = Math.min(this.width-40, Math.max(40, company.x + (Math.random()*120-60)));
+      const y = Math.min(this.height-40, Math.max(40, company.y + (Math.random()*120-60)));
+      const s = new Site(id, companyId, x, y, required || (120+Math.floor(Math.random()*200)), materialCost || (150+Math.floor(Math.random()*300)));
+      this.sites.push(s);
+      this.log(`Tạo công trường ${id} cho ${company.name} req=${s.requiredManHours} cost=${s.materialCost}`);
+      return s;
+    }
+    postJob(companyId, skillReq, wage){
+      const company = this.companies.find(c=>c.id===companyId);
+      if (!company) return null;
+      const id = `J${this.jobCounter++}`;
+      const j = new Job(id, companyId, skillReq || (1+Math.floor(Math.random()*5)), wage || (3+Math.floor(Math.random()*10)));
+      this.jobs[id] = j;
+      company.openings.push(id);
+      this.log(`${company.name} đăng tuyển ${id} skill>=${j.skillReq} wage=${j.wage}`);
+      return j;
+    }
+
+    matchJobs() {
+      const openJobs = Object.values(this.jobs).filter(j=>!j.filledBy);
+      openJobs.sort((a,b)=>b.wage - a.wage);
+      for (const citizen of this.citizens) {
+        if (citizen.employed) continue;
+        let best = null; let bestScore = -Infinity;
+        for (const job of openJobs) {
+          if (job.filledBy) continue;
+          if (citizen.skill < job.skillReq) continue;
+          const company = this.companies.find(c=>c.id===job.companyId);
+          const dist = Math.hypot(citizen.x - company.x, citizen.y - company.y) + 1;
+          const score = job.wage / dist + Math.random()*0.1;
+          if (score > bestScore) { bestScore = score; best = job; }
+        }
+        if (best) {
+          best.filledBy = citizen.id;
+          citizen.employed = best.id;
+          citizen.happiness += 0.05;
+          this.log(`${citizen.id} tuyển dụng vào ${best.id} (w=${best.wage})`);
+        }
+      }
+    }
+
+    paySalaries() {
+      for (const jid in this.jobs) {
+        const job = this.jobs[jid];
+        if (job.filledBy) {
+          const company = this.companies.find(c=>c.id===job.companyId);
+          const worker = this.citizens.find(x=>x.id===job.filledBy);
+          if (company.funds >= job.wage) {
+            company.funds -= job.wage;
+            worker.money += job.wage;
+          } else {
+            worker.happiness -= 0.1;
+            this.log(`${company.name} không đủ tiền trả lương cho ${job.id}`);
+          }
+        }
+      }
+    }
+
+    workTick() {
+      for (const co of this.companies) {
+        const coSites = this.sites.filter(s=>s.companyId===co.id && s.status==='ongoing');
+        if (coSites.length===0) continue;
+        const empJobs = co.openings.map(jid=>this.jobs[jid]).filter(j=>j && j.filledBy);
+        if (empJobs.length===0) continue;
+        const perWorkerBase = 1;
+        for (let i=0;i<empJobs.length;i++){
+          const job = empJobs[i];
+          const worker = this.citizens.find(c=>c.id===job.filledBy);
+          if (!worker) continue;
+          const output = perWorkerBase * (1 + (worker.skill-1)*0.2);
+          const site = coSites[i % coSites.length];
+          site.applyWork(output);
+          worker.happiness += 0.001;
+        }
+      }
+    }
+
+    startSitesIfPossible() {
+      for (const s of this.sites) {
+        if (s.status === 'planned' || s.status === 'waiting_materials') {
+          const co = this.companies.find(c=>c.id===s.companyId);
+          s.startIfPossible(co);
+          if (s.status==='ongoing') this.log(`Site ${s.id} bắt đầu (company ${co.name})`);
+        }
+      }
+    }
+
+    randomEvents() {
+      if (Math.random() < 0.01 && this.companies.length>0) {
+        const co = this.companies[Math.floor(Math.random()*this.companies.length)];
+        const gain = 100 + Math.floor(Math.random()*900);
+        co.funds += gain;
+        this.log(`Sự kiện: ${co.name} nhận hợp đồng +${gain}`);
+      }
+      if (Math.random() < 0.005 && this.sites.length>0) {
+        const s = this.sites[Math.floor(Math.random()*this.sites.length)];
+        if (s.status==='ongoing') {
+          s.status='waiting_materials';
+          this.log(`Sự kiện: Site ${s.id} thiếu vật liệu -> waiting`);
+        }
+      }
+    }
+
+    cleanupJobs() {
+      for (const jid in this.jobs){
+        const j = this.jobs[jid];
+        if (j.filledBy) {
+          const w = this.citizens.find(c=>c.id===j.filledBy);
+          if (!w || w.happiness <= 0 || w.money < -200) {
+            if (w) { w.employed = null; }
+            this.log(`${j.filledBy} đã rời khỏi ${j.id}`);
+            j.filledBy = null;
+          }
+        }
+      }
+    }
+
+    tick() {
+      this.ticks++;
+      for (const co of this.companies) {
+        if (co.funds > 300 && Math.random() < 0.03) {
+          this.postJob(co.id);
+        }
+      }
+
+      this.startSitesIfPossible();
+      this.matchJobs();
+      this.paySalaries();
+      this.workTick();
+
+      for (const c of this.citizens) c.tick();
+
+      this.randomEvents();
+      this.cleanupJobs();
+
+      if (this.ticks % 20 === 0) {
+        const employed = this.citizens.filter(c=>c.employed).length;
+        const totalMoney = Math.round(this.citizens.reduce((a,b)=>a+b.money,0));
+        this.log(`Tổng: ticks=${this.ticks} dân=${this.citizens.length} employed=${employed} totalMoney=${totalMoney}`);
+      }
+    }
+
+    toJSON(){
+      return {
+        ticks:this.ticks,
+        citizens:this.citizens.map(c=>c.toJSON()),
+        companies:this.companies.map(c=>c.toJSON()),
+        jobs:Object.values(this.jobs).map(j=>j.toJSON()),
+        sites:this.sites.map(s=>s.toJSON()),
+        jobCounter:this.jobCounter,
+        logLines:this.logLines
+      };
+    }
+    static from(obj, width, height){
+      const sim = new Simulator(width,height);
+      sim.ticks = obj.ticks;
+      sim.citizens = obj.citizens.map(Citizen.from);
+      sim.companies = obj.companies.map(Company.from);
+      sim.jobs = {};
+      for (const jo of obj.jobs) sim.jobs[jo.id] = Job.from(jo);
+      sim.sites = obj.sites.map(s=> {
+        const st = new Site(s.id,s.companyId,s.x,s.y,s.required,s.material);
+        st.progress = s.progress; st.status = s.status; return st;
+      });
+      sim.jobCounter = obj.jobCounter || 0;
+      sim.logLines = obj.logLines || [];
+      return sim;
+    }
+  }
+
+  // UI & rendering
+  const canvas = document.getElementById('world');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  let sim = new Simulator(W,H);
+
+  // initial bootstrap
+  for (let i=0;i<25;i++) sim.addCitizen();
+  sim.addCompany('BuildCo');
+  sim.addCompany('UrbanWorks');
+  sim.addSite(sim.companies[0].id, 220, 320);
+  sim.addSite(sim.companies[1].id, 150, 220);
+  sim.postJob(sim.companies[0].id,2,6);
+  sim.postJob(sim.companies[1].id,1,4);
+
+  let running = false;
+  let speed = 3;
+  let tickInterval = null;
+
+  function startRun(){
+    if (running) return;
+    running = true;
+    tickInterval = setInterval(()=> {
+      for (let i=0;i<speed;i++) {
+        sim.tick();
+      }
+      updateUI();
+    }, 400);
+  }
+  function stopRun(){
+    running=false;
+    if (tickInterval) clearInterval(tickInterval);
+    tickInterval=null;
+  }
+
+  document.getElementById('addCitizen').onclick = ()=> { sim.addCitizen(); updateUI(); };
+  document.getElementById('addCompany').onclick = ()=> { sim.addCompany(); updateUI(); };
+  document.getElementById('addSite').onclick = ()=> {
+    if (sim.companies.length===0) sim.addCompany();
+    const co = sim.companies[Math.floor(Math.random()*sim.companies.length)];
+    sim.addSite(co.id);
+    updateUI();
+  };
+  document.getElementById('postJob').onclick = ()=> {
+    if (sim.companies.length===0) sim.addCompany();
+    const co = sim.companies[Math.floor(Math.random()*sim.companies.length)];
+    sim.postJob(co.id);
+    updateUI();
+  };
+  document.getElementById('tickOnce').onclick = ()=> { sim.tick(); updateUI(); };
+  document.getElementById('start').onclick = ()=> { startRun(); };
+  document.getElementById('pause').onclick = ()=> { stopRun(); };
+  document.getElementById('speed').oninput = (e)=> { speed = parseInt(e.target.value,10); };
+  document.getElementById('save').onclick = ()=> {
+    localStorage.setItem('simSave', JSON.stringify(sim.toJSON()));
+    alert('Saved to localStorage');
+  };
+  document.getElementById('load').onclick = ()=> {
+    const data = localStorage.getItem('simSave');
+    if (!data) { alert('No save found'); return; }
+    sim = Simulator.from(JSON.parse(data), W, H);
+    updateUI();
+    alert('Loaded');
+  };
+  document.getElementById('reset').onclick = ()=> {
+    if (!confirm('Reset simulation?')) return;
+    sim = new Simulator(W,H);
+    for (let i=0;i<20;i++) sim.addCitizen();
+    sim.addCompany('BuildCo');
+    sim.addSite(sim.companies[0].id);
+    updateUI();
+  };
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for (const s of sim.sites) {
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.fillStyle = s.status==='done' ? '#8d6e63' : (s.status==='ongoing' ? '#ffcc80' : '#eee');
+      ctx.strokeStyle = '#444';
+      ctx.fillRect(-18,-18,36,36);
+      ctx.strokeRect(-18,-18,36,36);
+      ctx.fillStyle = '#ddd'; ctx.fillRect(-18,22,36,6);
+      const p = Math.min(1, s.progress / s.requiredManHours);
+      ctx.fillStyle = '#4caf50'; ctx.fillRect(-18,22,36*p,6);
+      ctx.fillStyle = '#000';
+      ctx.font = '10px Arial';
+      ctx.fillText(s.id, -18, -24);
+      ctx.restore();
+    }
+    for (const c of sim.companies) {
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.beginPath();
+      ctx.fillStyle = '#90caf9'; ctx.arc(0,0,14,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#1565c0'; ctx.stroke();
+      ctx.fillStyle='#000'; ctx.font='11px Arial'; ctx.fillText(c.name,18,-2);
+      ctx.restore();
+    }
+    for (const ci of sim.citizens) {
+      ctx.save();
+      ctx.translate(ci.x, ci.y);
+      ctx.beginPath();
+      ctx.fillStyle = ci.employed ? '#2e7d32' : '#1e88e5';
+      ctx.arc(0,0,6,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#222'; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillRect(6,6,200,54);
+    ctx.fillStyle='#000'; ctx.font='12px Arial';
+    ctx.fillText(`Ticks: ${sim.ticks}`, 12, 24);
+    ctx.fillText(`Citizens: ${sim.citizens.length}`, 12, 40);
+    ctx.fillText(`Companies: ${sim.companies.length}`, 110, 24);
+    ctx.fillText(`Sites: ${sim.sites.length}`, 110, 40);
+  }
+
+  function updateUI(){
+    draw();
+    const coDiv = document.getElementById('companies'); coDiv.innerHTML='';
+    for (const co of sim.companies) {
+      const d = document.createElement('div'); d.className='item';
+      d.innerHTML = `<strong>${co.name}</strong> <span class="small">[${co.id}]</span><br>
+        funds=${Math.round(co.funds)} openings=${co.openings.length} 
+        <div style="margin-top:6px">
+          <button class="small" data-action="post" data-id="${co.id}">Post job</button>
+          <button class="small" data-action="site" data-id="${co.id}">Add site</button>
+        </div>`;
+      coDiv.appendChild(d);
+    }
+    coDiv.querySelectorAll('button').forEach(b=>{
+      b.onclick = (e)=>{
+        const id = e.target.dataset.id;
+        if (e.target.dataset.action==='post') { sim.postJob(id); updateUI(); }
+        if (e.target.dataset.action==='site') { sim.addSite(id); updateUI(); }
+      };
+    });
+    const sitesDiv = document.getElementById('sites'); sitesDiv.innerHTML='';
+    for (const s of sim.sites) {
+      const co = sim.companies.find(c=>c.id===s.companyId);
+      const d = document.createElement('div'); d.className='item';
+      d.innerHTML = `<strong>${s.id}</strong> <span class="small">(${co?.name||s.companyId})</span><br>
+        status=${s.status} progress=${Math.round(s.progress)}/${s.requiredManHours}<br>
+        materialCost=${s.materialCost}`;
+      sitesDiv.appendChild(d);
+    }
+    const citDiv = document.getElementById('citizens'); citDiv.innerHTML='';
+    for (const c of sim.citizens) {
+      const d = document.createElement('div'); d.className='item';
+      d.innerHTML = `<strong>${c.id}</strong> <span class="small">skill=${c.skill}</span><br>
+        money=${Math.round(c.money)} happy=${c.happiness.toFixed(2)} <br>
+        employed=${c.employed || '-'}`;
+      citDiv.appendChild(d);
+    }
+    const logDiv = document.getElementById('log'); logDiv.innerHTML='';
+    sim.logLines.slice(0,80).forEach(l=>{
+      const p = document.createElement('div'); p.textContent = l; logDiv.appendChild(p);
+    });
+  }
+
+  updateUI();
+  setInterval(()=> { draw(); }, 1200);
+
+  canvas.onclick = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const c = new Citizen('C' + sim.citizens.length, x, y, 1+Math.floor(Math.random()*6));
+    sim.citizens.push(c);
+    sim.log(`Thêm dân ${c.id} via click`);
+    updateUI();
+  };
+  </script>
+</body>
+</html>
