@@ -2,13 +2,13 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-  <title>Construction Simulator (Browser) - Multi-file</title>
+  <title>Construction Simulator (Browser) - Full Upgrade</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header>
-    <h1>Construction Simulator (Browser)</h1>
+    <h1>Construction Simulator (Browser) - Full Upgrade</h1>
     <div class="controls">
       <button id="addCitizen">Thêm dân</button>
       <button id="addCompany">Thêm công ty</button>
@@ -40,6 +40,10 @@
         <div id="citizens"></div>
       </section>
       <section>
+        <h2>Player</h2>
+        <div id="playerInfo" class="item">-</div>
+      </section>
+      <section>
         <h2>Log</h2>
         <div id="log" class="log"></div>
       </section>
@@ -50,6 +54,13 @@
     <small>Open with a local web server for full features. Save/load uses localStorage.</small>
   </footer>
 
+  <!-- Core scripts (order matters) -->
+  <script src="js/core/astar.js"></script>
+  <script src="js/core/sim.js"></script>
+  <script src="js/core/supply.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/ui/renderer.js"></script>
+  <script src="js/ui/input.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>
