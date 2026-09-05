@@ -1,13 +1,17 @@
 {
   "name": "construction-simulator-browser",
-  "version": "1.1.0",
-  "description": "Construction Simulator (Browser) - improved with pathfinding, sprites and modular code.",
+  "version": "1.2.0",
+  "description": "Construction Simulator (Browser) - enhanced with logistics, contracts, minimap, export/import and Electron skeleton.",
   "main": "index.html",
   "scripts": {
     "start": "npx http-server -c-1 -p 8000",
-    "serve": "npx http-server -c-1 -p 8000"
+    "serve": "npx http-server -c-1 -p 8000",
+    "electron": "electron .",
+    "build-electron": "echo 'Run electron-builder or CI to build binaries'"
   },
   "author": "vimanhtuanpo",
   "license": "MIT",
-  "dependencies": {}
+  "dependencies": {
+    "electron": "^25.0.0"
+  }
 }

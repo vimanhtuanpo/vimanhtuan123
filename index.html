@@ -20,12 +20,18 @@
       <label>Speed: <input id="speed" type="range" min="1" max="10" value="2"></label>
       <button id="save">Save</button>
       <button id="load">Load</button>
+      <button id="export">Export .json</button>
+      <input id="importFile" type="file" style="display:none" />
+      <button id="importBtn">Import .json</button>
       <button id="reset">Reset</button>
     </div>
   </header>
 
   <main>
-    <div class="canvasWrap"><canvas id="world"></canvas></div>
+    <div class="canvasWrap">
+      <canvas id="world"></canvas>
+      <canvas id="minimap"></canvas>
+    </div>
     <aside>
       <section>
         <h2>Companies</h2>
@@ -38,6 +44,11 @@
       <section>
         <h2>Citizens</h2>
         <div id="citizens"></div>
+      </section>
+      <section>
+        <h2>Contracts / Market</h2>
+        <div id="contracts" class="item"></div>
+        <div id="market" class="item"></div>
       </section>
       <section>
         <h2>Player</h2>
@@ -58,8 +69,12 @@
   <script src="js/core/astar.js"></script>
   <script src="js/core/sim.js"></script>
   <script src="js/core/supply.js"></script>
+  <script src="js/core/logistics.js"></script>
+  <script src="js/core/contracts.js"></script>
   <script src="js/player.js"></script>
   <script src="js/ui/renderer.js"></script>
+  <script src="js/ui/minimap.js"></script>
+  <script src="js/ui/save.js"></script>
   <script src="js/ui/input.js"></script>
   <script src="js/main.js"></script>
 </body>

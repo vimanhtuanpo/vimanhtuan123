@@ -1,4 +1,4 @@
-/* style.css - improved separated stylesheet */
+/* style.css - improved separated stylesheet (updated for minimap & import/export) */
 *{box-sizing:border-box;font-family:Inter, Arial, Helvetica, sans-serif}
 :root{--bg:#f0f3f6;--panel:#ffffff;--accent:#1976d2}
 body{margin:0;display:flex;flex-direction:column;height:100vh;background:var(--bg)}
@@ -7,8 +7,9 @@ header h1{margin:0;font-size:18px}
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .controls button,input,select{padding:6px 8px;border-radius:6px;border:1px solid #cfd8dc;background:#fff}
 main{flex:1;display:flex;gap:12px;padding:12px}
-.canvasWrap{flex:0 0 auto}
+.canvasWrap{flex:0 0 auto;position:relative}
 canvas#world{background:linear-gradient(#bfe1ff,#e6f4ff);border:1px solid #98a6b3}
+canvas#minimap{position:absolute;right:8px;bottom:8px;border:1px solid #333;background:#000;opacity:0.9}
 aside{flex:1;overflow:auto;padding:10px;background:var(--panel);border-radius:8px;border:1px solid #e0e0e0}
 aside section{margin-bottom:12px}
 #companies,#sites,#citizens{max-height:220px;overflow:auto;border:1px solid #eee;padding:6px;background:#fafafa;border-radius:6px}
